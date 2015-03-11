@@ -153,8 +153,8 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
         }
         
         self.cachedBarViewHeights = nil;
-        
-        CGFloat xOffset = 0;
+        CGFloat totalBarAndPaddingWidth = (self.barWidth * self.numberOfBars) + (self.barPadding * (self.numberOfBars - 1));
+        CGFloat xOffset = (CGRectGetWidth(self.frame) - totalBarAndPaddingWidth)/2;
         NSUInteger index = 0;
         NSMutableArray *mutableBarViews = [NSMutableArray array];
         NSMutableArray *mutableCachedBarViewHeights = [NSMutableArray array];
