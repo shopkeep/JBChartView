@@ -55,6 +55,15 @@
  */
 - (CGFloat)barChartView:(JBBarChartView *)barChartView heightForBarViewAtIndex:(NSUInteger)index;
 
+/**
+ *  Ceiling for the width for all bars in the chart.
+ *
+ *  @param barChartView     The bar chart object requesting this information.
+ *
+ *  @return The highest desired x-axis width of all bars in the chart.
+ */
+- (CGFloat)maximumBarWidthForBarChartView:(JBBarChartView *)barChartView;
+
 @optional
 
 /**

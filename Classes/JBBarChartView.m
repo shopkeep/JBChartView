@@ -27,7 +27,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 
 @interface JBBarChartView ()
 
-@property (nonatomic, strong) NSDictionary *chartDataDictionary; // key = column, value = height
+@property (nonatomic, strong) NSDictionary *chartHeightsDictionary; // key = column, value = height
 @property (nonatomic, strong) NSArray *barViews;
 @property (nonatomic, strong) NSArray *cachedBarViewHeights;
 @property (nonatomic, assign) CGFloat barPadding;
@@ -124,21 +124,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
      * constructed via datasource and delegate functions
      */
     dispatch_block_t createDataDictionaries = ^{
-        
-        // Grab the count
-        NSAssert([self.dataSource respondsToSelector:@selector(numberOfBarsInBarChartView:)], @"JBBarChartView // datasource must implement - (NSUInteger)numberOfBarsInBarChartView:(JBBarChartView *)barChartView");
-        NSUInteger dataCount = [self.dataSource numberOfBarsInBarChartView:self];
-
-        // Build up the data collection
-        NSAssert([self.delegate respondsToSelector:@selector(barChartView:heightForBarViewAtIndex:)], @"JBBarChartView // delegate must implement - (CGFloat)barChartView:(JBBarChartView *)barChartView heightForBarViewAtIndex:(NSUInteger)index");
-        NSMutableDictionary *dataDictionary = [NSMutableDictionary dictionary];
-        for (NSUInteger index=0; index<dataCount; index++)
-        {
-            CGFloat height = [self.delegate barChartView:self heightForBarViewAtIndex:index];
-            NSAssert(height >= 0, @"JBBarChartView // datasource function - (CGFloat)barChartView:(JBBarChartView *)barChartView heightForBarViewAtIndex:(NSUInteger)index must return a CGFloat >= 0");
-            [dataDictionary setObject:[NSNumber numberWithFloat:height] forKey:[NSNumber numberWithInt:(int)index]];
-        }
-        self.chartDataDictionary = [NSDictionary dictionaryWithDictionary:dataDictionary];
+        self.chartHeightsDictionary = [self barHeightsDictionary];
 	};
     
     /*
@@ -151,8 +137,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
         }
         else
         {
-            NSUInteger totalBars = [[self.chartDataDictionary allKeys] count];
-            self.barPadding = (1/(float)totalBars) * kJBBarChartViewBarBasePaddingMutliplier;
+            self.barPadding = (1/(float)self.numberOfBars) * kJBBarChartViewBarBasePaddingMutliplier;
         }
     };
     
@@ -173,7 +158,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
         NSUInteger index = 0;
         NSMutableArray *mutableBarViews = [NSMutableArray array];
         NSMutableArray *mutableCachedBarViewHeights = [NSMutableArray array];
-        for (NSNumber *key in [[self.chartDataDictionary allKeys] sortedArrayUsingSelector:@selector(compare:)])
+        for (NSNumber *key in [[self.chartHeightsDictionary allKeys] sortedArrayUsingSelector:@selector(compare:)])
         {
             UIView *barView = nil; // since all bars are visible at once, no need to cache this view
             if ([self.dataSource respondsToSelector:@selector(barChartView:barViewAtIndex:)])
@@ -201,8 +186,8 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
             
             barView.tag = index;
 
-            CGFloat height = [self normalizedHeightForRawHeight:[self.chartDataDictionary objectForKey:key]];
-            barView.frame = CGRectMake(xOffset, self.bounds.size.height - height - self.footerView.frame.size.height, [self barWidth], height);
+            CGFloat height = [self normalizedHeightForRawHeight:self.chartHeightsDictionary[key]];
+            barView.frame = CGRectMake(xOffset, self.bounds.size.height - height - self.footerView.frame.size.height, self.barWidth, height);
             [mutableBarViews addObject:barView];
             [mutableCachedBarViewHeights addObject:[NSNumber numberWithFloat:height]];
 			
@@ -312,14 +297,21 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 
 - (CGFloat)barWidth
 {
-    NSUInteger barCount = [[self.chartDataDictionary allKeys] count];
+    CGFloat result = 0.0f;
+
+    NSUInteger barCount = self.numberOfBars;
     if (barCount > 0)
     {
         CGFloat totalPadding = (barCount - 1) * self.barPadding;
-        CGFloat availableWidth = self.bounds.size.width - totalPadding;
-        return availableWidth / barCount;
+        CGFloat maxWidth = [self.delegate maximumBarWidthForBarChartView:self];
+        NSAssert(maxWidth >= 0, @"JBBarChartView // datasource function - (CGFloat)barWidthForBarChartView:(JBBarChartView *)barChartView must return a CGFloat >= 0");
+        CGFloat availableWidth = CGRectGetWidth(self.bounds) - totalPadding;
+        result = availableWidth / barCount;
+        if (result > maxWidth) {
+            result = maxWidth;
+        }
     }
-    return 0;
+    return result;
 }
 
 #pragma mark - Setters
@@ -444,7 +436,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 {
     if(_cachedMinHeight == kJBBarChartViewUndefinedCachedHeight)
     {
-        NSArray *chartValues = [[NSMutableArray arrayWithArray:[self.chartDataDictionary allValues]] sortedArrayUsingSelector:@selector(compare:)];
+        NSArray *chartValues = [[NSMutableArray arrayWithArray:[self.chartHeightsDictionary allValues]] sortedArrayUsingSelector:@selector(compare:)];
         _cachedMinHeight =  [[chartValues firstObject] floatValue];
     }
     return _cachedMinHeight;
@@ -454,7 +446,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 {
     if (_cachedMaxHeight == kJBBarChartViewUndefinedCachedHeight)
     {
-        NSArray *chartValues = [[NSMutableArray arrayWithArray:[self.chartDataDictionary allValues]] sortedArrayUsingSelector:@selector(compare:)];
+        NSArray *chartValues = [[NSMutableArray arrayWithArray:[self.chartHeightsDictionary allValues]] sortedArrayUsingSelector:@selector(compare:)];
         _cachedMaxHeight =  [[chartValues lastObject] floatValue];
     }
     return _cachedMaxHeight;
@@ -518,7 +510,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 
 - (void)touchesBeganOrMovedWithTouches:(NSSet *)touches
 {
-    if (self.state == JBChartViewStateCollapsed || [[self.chartDataDictionary allKeys] count] <= 0)
+    if (self.state == JBChartViewStateCollapsed || self.numberOfBars <= 0)
     {
         return;
     }
@@ -568,7 +560,7 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 
 - (void)touchesEndedOrCancelledWithTouches:(NSSet *)touches
 {
-    if (self.state == JBChartViewStateCollapsed || [[self.chartDataDictionary allKeys] count] <= 0)
+    if (self.state == JBChartViewStateCollapsed || self.numberOfBars <= 0)
     {
         return;
     }
@@ -630,6 +622,25 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
 {
     [self touchesEndedOrCancelledWithTouches:touches];
+}
+
+#pragma mark - Bar Dimensions
+
+- (NSUInteger)numberOfBars {
+    NSAssert([self.dataSource respondsToSelector:@selector(numberOfBarsInBarChartView:)], @"JBBarChartView // datasource must implement - (NSUInteger)numberOfBarsInBarChartView:(JBBarChartView *)barChartView");
+    return [self.dataSource numberOfBarsInBarChartView:self];
+}
+
+- (NSDictionary *)barHeightsDictionary {
+    NSAssert([self.delegate respondsToSelector:@selector(barChartView:heightForBarViewAtIndex:)], @"JBBarChartView // delegate must implement - (CGFloat)barChartView:(JBBarChartView *)barChartView heightForBarViewAtIndex:(NSUInteger)index");
+    NSMutableDictionary *heightsDictionary = [NSMutableDictionary dictionary];
+    for (NSUInteger index = 0; index < self.numberOfBars; index++) {
+        CGFloat height = [self.delegate barChartView:self heightForBarViewAtIndex:index];
+        NSAssert(height >= 0, @"JBBarChartView // datasource function - (CGFloat)barChartView:(JBBarChartView *)barChartView heightForBarViewAtIndex:(NSUInteger)index must return a CGFloat >= 0");
+        [heightsDictionary setObject:[NSNumber numberWithFloat:height] forKey:[NSNumber numberWithInt:(int)index]];
+    }
+
+    return [NSDictionary dictionaryWithDictionary:heightsDictionary];
 }
 
 @end
