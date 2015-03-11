@@ -303,10 +303,19 @@ static UIColor *kJBBarChartViewDefaultBarColor = nil;
     if (barCount > 0)
     {
         CGFloat totalPadding = (barCount - 1) * self.barPadding;
-        CGFloat maxWidth = [self.delegate maximumBarWidthForBarChartView:self];
-        NSAssert(maxWidth >= 0, @"JBBarChartView // datasource function - (CGFloat)barWidthForBarChartView:(JBBarChartView *)barChartView must return a CGFloat >= 0");
+
         CGFloat availableWidth = CGRectGetWidth(self.bounds) - totalPadding;
         result = availableWidth / barCount;
+        result = [self barWidthCappedAtDelegateMaximum:result];
+    }
+    return result;
+}
+
+- (CGFloat)barWidthCappedAtDelegateMaximum:(CGFloat)inputBarWidth {
+    CGFloat result = inputBarWidth;
+    if ([self.delegate respondsToSelector:@selector(maximumBarWidthForBarChartView:)]) {
+        CGFloat maxWidth = [self.delegate maximumBarWidthForBarChartView:self];
+        NSAssert(maxWidth >= 0, @"JBBarChartView // datasource function - (CGFloat)barWidthForBarChartView:(JBBarChartView *)barChartView must return a CGFloat >= 0");
         if (result > maxWidth) {
             result = maxWidth;
         }
